@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from tts_app.tts import TTSEngine, TTSConfig, ChatterboxEngine
 from tts_app.tts.base import TTSResult
+from tts_app.tts.chatterbox import HuggingFaceTokenError, CUDANotAvailableError
 
 
 class TestTTSConfig:
@@ -34,6 +35,16 @@ class TestTTSConfig:
         assert config.voice_reference == Path("/path/to/voice.wav")
         assert config.device == "cuda"
         assert config.chunk_size == 1000
+
+    def test_hf_token_default(self):
+        """Test hf_token defaults to None."""
+        config = TTSConfig()
+        assert config.hf_token is None
+
+    def test_hf_token_custom(self):
+        """Test hf_token can be set."""
+        config = TTSConfig(hf_token="hf_test_token_123")
+        assert config.hf_token == "hf_test_token_123"
 
 
 class TestTTSResult:
@@ -144,3 +155,25 @@ class TestChatterboxEngineMultilingual:
 
         for lang in expected:
             assert lang in ChatterboxEngine.MULTILINGUAL_LANGUAGES
+
+
+class TestChatterboxErrorHandling:
+    """Tests for error handling in ChatterboxEngine."""
+
+    def test_huggingface_token_error_is_runtime_error(self):
+        """Test that HuggingFaceTokenError is a RuntimeError."""
+        assert issubclass(HuggingFaceTokenError, RuntimeError)
+
+    def test_cuda_not_available_error_is_runtime_error(self):
+        """Test that CUDANotAvailableError is a RuntimeError."""
+        assert issubclass(CUDANotAvailableError, RuntimeError)
+
+    def test_huggingface_token_error_message(self):
+        """Test that HuggingFaceTokenError can be raised with message."""
+        with pytest.raises(HuggingFaceTokenError, match="Token"):
+            raise HuggingFaceTokenError("Token required")
+
+    def test_cuda_not_available_error_message(self):
+        """Test that CUDANotAvailableError can be raised with message."""
+        with pytest.raises(CUDANotAvailableError, match="CUDA"):
+            raise CUDANotAvailableError("CUDA not available")
