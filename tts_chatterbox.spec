@@ -4,6 +4,9 @@
 To build the executable:
     pyinstaller tts_chatterbox.spec
 
+To build with debug console (shows errors):
+    pyinstaller tts_chatterbox.spec -- --debug
+
 The resulting executable will be in dist/tts_chatterbox/
 """
 
@@ -14,6 +17,10 @@ block_cipher = None
 
 # Get the project root directory
 project_root = Path(SPECPATH)
+
+# Check for debug mode via command line
+# Use: pyinstaller tts_chatterbox.spec -- --debug
+DEBUG_MODE = '--debug' in sys.argv
 
 a = Analysis(
     [str(project_root / 'src' / 'tts_app' / 'main.py')],
@@ -62,9 +69,9 @@ a = Analysis(
         'tkinter.filedialog',
         'tkinter.messagebox',
     ],
-    hookspath=[],
+    hookspath=[str(project_root / 'pyinstaller_hooks')],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(project_root / 'pyinstaller_hooks' / 'rthook_tts_app.py')],
     excludes=[
         # Exclude unnecessary modules to reduce size
         'matplotlib',
@@ -89,7 +96,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # Set to True for debugging
+    console=DEBUG_MODE,  # Set DEBUG_MODE=True or use -- --debug for debugging
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

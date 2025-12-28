@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "text-to-speech-chatterbox"
-version = "0.2.3"
+version = "0.2.4"
 description = "Desktop application for converting documents to speech using Chatterbox TTS"
 readme = "README.md"
 license = {text = "MIT"}
