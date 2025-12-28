@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "text-to-speech-chatterbox"
+version = "0.1.0"
+description = "Desktop application for converting documents to speech using Chatterbox TTS"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Jhon-Crow"}
+]
+keywords = ["tts", "text-to-speech", "chatterbox", "pdf", "doc", "docx", "audio"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+dependencies = [
+    "chatterbox-tts>=0.1.6",
+    "torchaudio",
+    "pdfplumber>=0.10.0",
+    "olefile>=0.46",
+    "python-docx>=1.0.0",
+    "markdown>=3.5.0",
+    "customtkinter>=5.2.0",
+    "CTkMessagebox>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pyinstaller>=6.0.0",
+]
+
+[project.scripts]
+tts-chatterbox = "tts_app.main:main"
+
+[project.gui-scripts]
+tts-chatterbox-gui = "tts_app.main:main"
+
+[project.urls]
+"Homepage" = "https://github.com/Jhon-Crow/text-to-speech-with-chatterbox"
+"Bug Tracker" = "https://github.com/Jhon-Crow/text-to-speech-with-chatterbox/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

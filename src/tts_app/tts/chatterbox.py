@@ -1,0 +1,297 @@
+"""Chatterbox TTS engine implementation."""
+
+import logging
+from pathlib import Path
+from typing import Optional
+
+from .base import TTSEngine, TTSConfig, TTSResult, ProgressCallback
+
+logger = logging.getLogger(__name__)
+
+
+class ChatterboxEngine(TTSEngine):
+    """TTS engine using Resemble AI's Chatterbox models.
+
+    Supports three model variants:
+    - Turbo: Fast, English-only, 350M parameters
+    - Standard: English with CFG tuning, 500M parameters
+    - Multilingual: 23+ languages, 500M parameters
+    """
+
+    # Supported languages for the multilingual model
+    MULTILINGUAL_LANGUAGES = [
+        "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi",
+        "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "ru", "sv",
+        "sw", "tr", "zh"
+    ]
+
+    def __init__(self):
+        """Initialize the Chatterbox engine."""
+        self._model = None
+        self._config: Optional[TTSConfig] = None
+        self._initialized = False
+
+    @property
+    def name(self) -> str:
+        """Get the engine name."""
+        return "chatterbox"
+
+    def initialize(self, config: TTSConfig) -> None:
+        """Initialize the Chatterbox TTS model.
+
+        Args:
+            config: TTS configuration settings.
+
+        Raises:
+            RuntimeError: If model loading fails.
+        """
+        self._config = config
+
+        # Determine device
+        device = config.device
+        if device == "auto":
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        logger.info(f"Initializing Chatterbox {config.model_type} on {device}")
+
+        try:
+            if config.model_type == "turbo":
+                from chatterbox.tts_turbo import ChatterboxTurboTTS
+                self._model = ChatterboxTurboTTS.from_pretrained(device=device)
+
+            elif config.model_type == "multilingual":
+                from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+                self._model = ChatterboxMultilingualTTS.from_pretrained(device=device)
+
+            else:  # standard
+                from chatterbox.tts import ChatterboxTTS
+                self._model = ChatterboxTTS.from_pretrained(device=device)
+
+            self._initialized = True
+            logger.info("Chatterbox model initialized successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize Chatterbox: {e}")
+            raise RuntimeError(f"Failed to initialize TTS model: {e}") from e
+
+    def is_initialized(self) -> bool:
+        """Check if the engine is initialized."""
+        return self._initialized and self._model is not None
+
+    def get_supported_languages(self) -> list[str]:
+        """Get list of supported language codes."""
+        if self._config and self._config.model_type == "multilingual":
+            return self.MULTILINGUAL_LANGUAGES
+        return ["en"]  # Turbo and standard are English-only
+
+    def synthesize(
+        self,
+        text: str,
+        output_path: Path,
+        progress_callback: Optional[ProgressCallback] = None
+    ) -> TTSResult:
+        """Synthesize speech from text.
+
+        Args:
+            text: The text to convert to speech.
+            output_path: Path where the audio file should be saved.
+            progress_callback: Optional callback for progress updates.
+
+        Returns:
+            TTSResult with information about the generated audio.
+
+        Raises:
+            RuntimeError: If synthesis fails or engine not initialized.
+        """
+        if not self.is_initialized():
+            raise RuntimeError("TTS engine not initialized. Call initialize() first.")
+
+        import torch
+        import torchaudio
+
+        # Split text into chunks for long texts
+        chunks = self._split_into_chunks(text, self._config.chunk_size)
+        total_chunks = len(chunks)
+
+        logger.info(f"Synthesizing {total_chunks} chunks")
+
+        audio_segments = []
+        sample_rate = self._model.sr
+
+        for i, chunk in enumerate(chunks):
+            if progress_callback:
+                progress_callback(i + 1, total_chunks, f"Processing chunk {i + 1}/{total_chunks}")
+
+            if not chunk.strip():
+                continue
+
+            try:
+                # Generate audio for this chunk
+                wav = self._generate_chunk(chunk)
+                audio_segments.append(wav)
+
+            except Exception as e:
+                logger.warning(f"Failed to synthesize chunk {i + 1}: {e}")
+                # Continue with other chunks
+                continue
+
+        if not audio_segments:
+            raise RuntimeError("No audio was generated")
+
+        # Concatenate all audio segments
+        if len(audio_segments) == 1:
+            final_audio = audio_segments[0]
+        else:
+            # Add small silence between segments
+            silence = torch.zeros(1, int(sample_rate * 0.3))  # 300ms silence
+            padded_segments = []
+            for seg in audio_segments:
+                padded_segments.append(seg)
+                padded_segments.append(silence)
+            # Remove last silence
+            padded_segments = padded_segments[:-1]
+            final_audio = torch.cat(padded_segments, dim=1)
+
+        # Save to file
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        torchaudio.save(str(output_path), final_audio, sample_rate)
+
+        # Calculate duration
+        duration = final_audio.shape[1] / sample_rate
+
+        if progress_callback:
+            progress_callback(total_chunks, total_chunks, "Complete")
+
+        return TTSResult(
+            audio_path=output_path,
+            duration_seconds=duration,
+            sample_rate=sample_rate,
+            text_processed=text
+        )
+
+    def _generate_chunk(self, text: str):
+        """Generate audio for a single text chunk.
+
+        Args:
+            text: The text chunk to synthesize.
+
+        Returns:
+            Audio tensor.
+        """
+        voice_ref = None
+        if self._config.voice_reference:
+            voice_ref = str(self._config.voice_reference)
+
+        if self._config.model_type == "multilingual":
+            # Multilingual model requires language_id
+            wav = self._model.generate(
+                text,
+                audio_prompt_path=voice_ref,
+                language_id=self._config.language
+            )
+        elif voice_ref:
+            # With voice reference
+            wav = self._model.generate(text, audio_prompt_path=voice_ref)
+        else:
+            # Without voice reference
+            wav = self._model.generate(text)
+
+        return wav
+
+    def _split_into_chunks(self, text: str, max_chars: int) -> list[str]:
+        """Split text into chunks at natural boundaries.
+
+        Args:
+            text: The text to split.
+            max_chars: Maximum characters per chunk.
+
+        Returns:
+            List of text chunks.
+        """
+        if len(text) <= max_chars:
+            return [text]
+
+        chunks = []
+        current_chunk = ""
+
+        # Split by sentences first
+        sentences = self._split_sentences(text)
+
+        for sentence in sentences:
+            if len(current_chunk) + len(sentence) <= max_chars:
+                current_chunk += sentence
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                # If single sentence is too long, split by phrases
+                if len(sentence) > max_chars:
+                    phrases = self._split_phrases(sentence, max_chars)
+                    chunks.extend(phrases[:-1])
+                    current_chunk = phrases[-1] if phrases else ""
+                else:
+                    current_chunk = sentence
+
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+
+        return chunks
+
+    def _split_sentences(self, text: str) -> list[str]:
+        """Split text into sentences.
+
+        Args:
+            text: The text to split.
+
+        Returns:
+            List of sentences.
+        """
+        import re
+
+        # Split on sentence-ending punctuation
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        return sentences
+
+    def _split_phrases(self, text: str, max_chars: int) -> list[str]:
+        """Split a long sentence into smaller phrases.
+
+        Args:
+            text: The text to split.
+            max_chars: Maximum characters per phrase.
+
+        Returns:
+            List of phrases.
+        """
+        import re
+
+        # Split on commas, semicolons, and other natural breaks
+        parts = re.split(r'(?<=[,;:])\s+', text)
+
+        phrases = []
+        current_phrase = ""
+
+        for part in parts:
+            if len(current_phrase) + len(part) <= max_chars:
+                current_phrase += " " + part if current_phrase else part
+            else:
+                if current_phrase:
+                    phrases.append(current_phrase.strip())
+                # If still too long, force split
+                if len(part) > max_chars:
+                    words = part.split()
+                    current_phrase = ""
+                    for word in words:
+                        if len(current_phrase) + len(word) + 1 <= max_chars:
+                            current_phrase += " " + word if current_phrase else word
+                        else:
+                            if current_phrase:
+                                phrases.append(current_phrase.strip())
+                            current_phrase = word
+                else:
+                    current_phrase = part
+
+        if current_phrase.strip():
+            phrases.append(current_phrase.strip())
+
+        return phrases
