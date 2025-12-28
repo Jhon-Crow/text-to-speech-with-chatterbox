@@ -18,12 +18,24 @@ A desktop application that converts documents (PDF, DOC, DOCX, TXT, MD) to speec
 
 ## Installation
 
-### Requirements
+### Download Pre-built Windows Executable (Recommended)
 
-- Python 3.10 or higher
+**No Python installation required!**
+
+1. Go to the [Releases page](https://github.com/Jhon-Crow/text-to-speech-with-chatterbox/releases)
+2. Download `tts_chatterbox_windows.zip` from the latest release
+3. Extract the zip file to a folder
+4. Run `tts_chatterbox.exe`
+
+**Requirements for the executable:**
+- Windows 10 or later
 - NVIDIA GPU with CUDA (recommended) or CPU
 
-### Install from source
+### Install from Source (for developers)
+
+**Requirements:**
+- Python 3.10 or higher
+- NVIDIA GPU with CUDA (recommended) or CPU
 
 ```bash
 # Clone the repository
@@ -37,7 +49,9 @@ pip install -e .
 pip install -e .[dev]
 ```
 
-### Build Windows Executable
+### Build Windows Executable (for developers)
+
+If you want to build the executable yourself:
 
 ```bash
 # Install with dev dependencies
@@ -50,6 +64,8 @@ pyinstaller tts_chatterbox.spec
 ```
 
 Or simply run `build.bat` on Windows.
+
+> **Note:** Pre-built executables are available on the [Releases page](https://github.com/Jhon-Crow/text-to-speech-with-chatterbox/releases).
 
 ## Usage
 
