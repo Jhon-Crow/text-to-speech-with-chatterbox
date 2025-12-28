@@ -23,6 +23,26 @@ a = Analysis(
         # Include any data files if needed
     ],
     hiddenimports=[
+        # Application modules (explicit imports for PyInstaller)
+        'tts_app',
+        'tts_app.gui',
+        'tts_app.gui.app',
+        'tts_app.readers',
+        'tts_app.readers.base',
+        'tts_app.readers.registry',
+        'tts_app.readers.pdf_reader',
+        'tts_app.readers.doc_reader',
+        'tts_app.readers.docx_reader',
+        'tts_app.readers.text_reader',
+        'tts_app.readers.markdown_reader',
+        'tts_app.preprocessors',
+        'tts_app.preprocessors.base',
+        'tts_app.preprocessors.pipeline',
+        'tts_app.preprocessors.footnotes',
+        'tts_app.preprocessors.page_numbers',
+        'tts_app.tts',
+        'tts_app.tts.base',
+        'tts_app.tts.chatterbox',
         # TTS imports
         'chatterbox',
         'chatterbox.tts',

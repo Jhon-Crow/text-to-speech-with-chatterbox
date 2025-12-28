@@ -19,7 +19,7 @@ def main():
     """Run the TTS application."""
     setup_logging()
 
-    from .gui.app import run_app
+    from tts_app.gui.app import run_app
     run_app()
 
 
