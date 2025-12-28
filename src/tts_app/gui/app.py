@@ -258,7 +258,7 @@ class TTSApplication(ctk.CTk):
         return [
             ("Supported documents", patterns),
             ("PDF files", "*.pdf"),
-            ("Word documents", "*.docx"),
+            ("Word documents", "*.doc *.docx"),
             ("Text files", "*.txt"),
             ("Markdown files", "*.md"),
             ("All files", "*.*")

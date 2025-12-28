@@ -1,10 +1,10 @@
 # Text to Speech with Chatterbox
 
-A desktop application that converts documents (PDF, DOCX, TXT, MD) to speech using [Chatterbox TTS](https://github.com/resemble-ai/chatterbox) by Resemble AI.
+A desktop application that converts documents (PDF, DOC, DOCX, TXT, MD) to speech using [Chatterbox TTS](https://github.com/resemble-ai/chatterbox) by Resemble AI.
 
 ## Features
 
-- **Multiple input formats**: PDF, DOCX, TXT, and Markdown files
+- **Multiple input formats**: PDF, DOC, DOCX, TXT, and Markdown files
 - **Chatterbox TTS models**:
   - **Turbo**: Fast, English-only (350M parameters)
   - **Standard**: English with CFG tuning (500M parameters)
@@ -108,10 +108,11 @@ The application is designed with extensibility in mind:
 
 ```
 src/tts_app/
-├── readers/           # Document readers (PDF, DOCX, TXT, MD)
+├── readers/           # Document readers (PDF, DOC, DOCX, TXT, MD)
 │   ├── base.py       # Abstract DocumentReader class
 │   ├── registry.py   # Reader registry for dynamic format support
 │   ├── pdf_reader.py
+│   ├── doc_reader.py
 │   ├── docx_reader.py
 │   ├── text_reader.py
 │   └── markdown_reader.py
@@ -201,4 +202,5 @@ MIT License
 - [Chatterbox TTS](https://github.com/resemble-ai/chatterbox) by Resemble AI
 - [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) for the modern GUI
 - [pdfplumber](https://github.com/jsvine/pdfplumber) for PDF text extraction
+- [olefile](https://github.com/decalage2/olefile) for DOC (legacy Word) support
 - [python-docx](https://github.com/python-openxml/python-docx) for DOCX support

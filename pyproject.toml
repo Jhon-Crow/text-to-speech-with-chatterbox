@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 authors = [
     {name = "Jhon-Crow"}
 ]
-keywords = ["tts", "text-to-speech", "chatterbox", "pdf", "docx", "audio"]
+keywords = ["tts", "text-to-speech", "chatterbox", "pdf", "doc", "docx", "audio"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: End Users/Desktop",
@@ -29,6 +29,7 @@ dependencies = [
     "chatterbox-tts>=0.1.6",
     "torchaudio",
     "pdfplumber>=0.10.0",
+    "olefile>=0.46",
     "python-docx>=1.0.0",
     "markdown>=3.5.0",
     "customtkinter>=5.2.0",

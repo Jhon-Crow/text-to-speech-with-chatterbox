@@ -111,15 +111,17 @@ def create_default_registry() -> ReaderRegistry:
     """Create a registry with all default document readers.
 
     Returns:
-        A ReaderRegistry with PDF, DOCX, TXT, and MD readers registered.
+        A ReaderRegistry with PDF, DOC, DOCX, TXT, and MD readers registered.
     """
     from .pdf_reader import PDFReader
+    from .doc_reader import DOCReader
     from .docx_reader import DOCXReader
     from .text_reader import TextReader
     from .markdown_reader import MarkdownReader
 
     registry = ReaderRegistry()
     registry.register(PDFReader())
+    registry.register(DOCReader())
     registry.register(DOCXReader())
     registry.register(TextReader())
     registry.register(MarkdownReader())

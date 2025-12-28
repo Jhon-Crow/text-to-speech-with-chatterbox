@@ -6,6 +6,7 @@ import tempfile
 
 from tts_app.readers import (
     DocumentReader,
+    DOCReader,
     TextReader,
     MarkdownReader,
     ReaderRegistry,
@@ -193,6 +194,29 @@ class TestReaderRegistry:
             temp_path.unlink()
 
 
+class TestDOCReader:
+    """Tests for DOCReader."""
+
+    def test_supported_extensions(self):
+        """Test that .doc is supported."""
+        reader = DOCReader()
+        assert ".doc" in reader.supported_extensions
+        assert ".DOC" in reader.supported_extensions
+
+    def test_can_read_doc_file(self):
+        """Test that reader identifies doc files correctly."""
+        reader = DOCReader()
+        assert reader.can_read(Path("test.doc"))
+        assert reader.can_read(Path("test.DOC"))
+        assert not reader.can_read(Path("test.docx"))
+
+    def test_read_nonexistent_file(self):
+        """Test that reading nonexistent file raises error."""
+        reader = DOCReader()
+        with pytest.raises(FileNotFoundError):
+            reader.read(Path("/nonexistent/file.doc"))
+
+
 class TestDefaultRegistry:
     """Tests for the default registry."""
 
@@ -201,8 +225,9 @@ class TestDefaultRegistry:
         registry = create_default_registry()
         extensions = registry.supported_extensions
 
-        # Should support all required formats
+        # Should support all required formats (PDF, DOC, DOCX, TXT, MD)
         assert any(".pdf" in ext.lower() for ext in extensions)
+        assert any(".doc" == ext.lower() for ext in extensions)  # DOC (legacy)
         assert any(".docx" in ext.lower() for ext in extensions)
         assert any(".txt" in ext.lower() for ext in extensions)
         assert any(".md" in ext.lower() for ext in extensions)
