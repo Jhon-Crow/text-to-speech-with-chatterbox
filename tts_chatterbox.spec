@@ -42,6 +42,7 @@ a = Analysis(
         'tts_app.readers.docx_reader',
         'tts_app.readers.text_reader',
         'tts_app.readers.markdown_reader',
+        'tts_app.readers.rtf_reader',
         'tts_app.preprocessors',
         'tts_app.preprocessors.base',
         'tts_app.preprocessors.pipeline',
@@ -57,10 +58,16 @@ a = Analysis(
         'chatterbox.mtl_tts',
         'torchaudio',
         'torch',
+        # Scientific computing (required by chatterbox)
+        'scipy',
+        'scipy.signal',
+        'scipy.io',
+        'scipy.io.wavfile',
         # Document readers
         'pdfplumber',
         'docx',
         'markdown',
+        'striprtf',
         # GUI
         'customtkinter',
         'CTkMessagebox',
@@ -76,7 +83,7 @@ a = Analysis(
         # Exclude unnecessary modules to reduce size
         'matplotlib',
         'numpy.testing',
-        'scipy',
+        # Note: scipy is required by chatterbox-tts, do not exclude it
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

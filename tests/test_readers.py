@@ -9,6 +9,7 @@ from tts_app.readers import (
     DOCReader,
     TextReader,
     MarkdownReader,
+    RTFReader,
     ReaderRegistry,
 )
 from tts_app.readers.base import DocumentContent
@@ -217,6 +218,29 @@ class TestDOCReader:
             reader.read(Path("/nonexistent/file.doc"))
 
 
+class TestRTFReader:
+    """Tests for RTFReader."""
+
+    def test_supported_extensions(self):
+        """Test that .rtf is supported."""
+        reader = RTFReader()
+        assert ".rtf" in reader.supported_extensions
+        assert ".RTF" in reader.supported_extensions
+
+    def test_can_read_rtf_file(self):
+        """Test that reader identifies rtf files correctly."""
+        reader = RTFReader()
+        assert reader.can_read(Path("test.rtf"))
+        assert reader.can_read(Path("test.RTF"))
+        assert not reader.can_read(Path("test.txt"))
+
+    def test_read_nonexistent_file(self):
+        """Test that reading nonexistent file raises error."""
+        reader = RTFReader()
+        with pytest.raises(FileNotFoundError):
+            reader.read(Path("/nonexistent/file.rtf"))
+
+
 class TestDefaultRegistry:
     """Tests for the default registry."""
 
@@ -225,9 +249,10 @@ class TestDefaultRegistry:
         registry = create_default_registry()
         extensions = registry.supported_extensions
 
-        # Should support all required formats (PDF, DOC, DOCX, TXT, MD)
+        # Should support all required formats (PDF, DOC, DOCX, TXT, MD, RTF)
         assert any(".pdf" in ext.lower() for ext in extensions)
         assert any(".doc" == ext.lower() for ext in extensions)  # DOC (legacy)
         assert any(".docx" in ext.lower() for ext in extensions)
         assert any(".txt" in ext.lower() for ext in extensions)
         assert any(".md" in ext.lower() for ext in extensions)
+        assert any(".rtf" in ext.lower() for ext in extensions)

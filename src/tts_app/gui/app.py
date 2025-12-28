@@ -2,6 +2,7 @@
 
 import logging
 import threading
+import traceback
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,118 @@ from tts_app.preprocessors.pipeline import create_default_pipeline
 from tts_app.tts import ChatterboxEngine, TTSConfig
 
 logger = logging.getLogger(__name__)
+
+
+class ErrorDialog(ctk.CTkToplevel):
+    """Custom error dialog with copy button for error message.
+
+    This dialog displays an error message and provides a button to copy
+    the full error text to the clipboard.
+    """
+
+    def __init__(self, parent, title: str, message: str, full_traceback: str = ""):
+        """Initialize the error dialog.
+
+        Args:
+            parent: Parent window.
+            title: Dialog title.
+            message: Short error message.
+            full_traceback: Full traceback for copying (optional).
+        """
+        super().__init__(parent)
+
+        self.title(title)
+        self.geometry("500x300")
+        self.minsize(400, 200)
+        self.transient(parent)
+        self.grab_set()
+
+        # Store the full error text for copying
+        self._error_text = f"{message}\n\n{full_traceback}" if full_traceback else message
+
+        # Main frame with padding
+        main_frame = ctk.CTkFrame(self)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Error icon and title
+        title_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        title_frame.pack(fill="x", pady=(0, 10))
+
+        error_label = ctk.CTkLabel(
+            title_frame,
+            text="❌ Error",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#FF5555"
+        )
+        error_label.pack(side="left")
+
+        # Error message in scrollable text
+        text_frame = ctk.CTkFrame(main_frame)
+        text_frame.pack(fill="both", expand=True, pady=(0, 15))
+
+        self._error_textbox = ctk.CTkTextbox(
+            text_frame,
+            wrap="word",
+            font=ctk.CTkFont(size=12)
+        )
+        self._error_textbox.pack(fill="both", expand=True, padx=5, pady=5)
+        self._error_textbox.insert("1.0", self._error_text)
+        self._error_textbox.configure(state="disabled")
+
+        # Button frame
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(fill="x")
+
+        # Copy button
+        copy_btn = ctk.CTkButton(
+            button_frame,
+            text="📋 Copy Error",
+            command=self._copy_to_clipboard,
+            width=120
+        )
+        copy_btn.pack(side="left", padx=(0, 10))
+
+        # OK button
+        ok_btn = ctk.CTkButton(
+            button_frame,
+            text="OK",
+            command=self.destroy,
+            width=80
+        )
+        ok_btn.pack(side="right")
+
+        # Center the dialog on parent
+        self.update_idletasks()
+        self._center_on_parent(parent)
+
+    def _center_on_parent(self, parent):
+        """Center this dialog on the parent window."""
+        parent_x = parent.winfo_x()
+        parent_y = parent.winfo_y()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+
+        dialog_w = self.winfo_width()
+        dialog_h = self.winfo_height()
+
+        x = parent_x + (parent_w - dialog_w) // 2
+        y = parent_y + (parent_h - dialog_h) // 2
+
+        self.geometry(f"+{x}+{y}")
+
+    def _copy_to_clipboard(self):
+        """Copy the error text to clipboard."""
+        self.clipboard_clear()
+        self.clipboard_append(self._error_text)
+
+        # Show feedback
+        CTkMessagebox(
+            master=self,
+            title="Copied",
+            message="Error text copied to clipboard!",
+            icon="check",
+            width=300
+        )
 
 
 class TTSApplication(ctk.CTk):
@@ -180,7 +293,8 @@ class TTSApplication(ctk.CTk):
 
         ctk.CTkLabel(device_frame, text="Device:").pack(side="left")
 
-        for device, label in [("auto", "Auto"), ("cuda", "GPU (CUDA)"), ("cpu", "CPU")]:
+        # Auto-detect includes: NVIDIA CUDA, AMD ROCm, Apple MPS
+        for device, label in [("auto", "Auto (GPU/CPU)"), ("cuda", "GPU"), ("cpu", "CPU")]:
             rb = ctk.CTkRadioButton(
                 device_frame,
                 text=label,
@@ -188,6 +302,15 @@ class TTSApplication(ctk.CTk):
                 value=device
             )
             rb.pack(side="left", padx=(20, 0))
+
+        # Device help text
+        device_help = ctk.CTkLabel(
+            options_frame,
+            text="Auto detects: NVIDIA (CUDA), AMD (ROCm), Apple (MPS)",
+            text_color="gray",
+            font=ctk.CTkFont(size=11)
+        )
+        device_help.pack(anchor="w", padx=(80, 0))
 
         # Footnotes option
         footnote_frame = ctk.CTkFrame(options_frame)
@@ -259,6 +382,7 @@ class TTSApplication(ctk.CTk):
             ("Supported documents", patterns),
             ("PDF files", "*.pdf"),
             ("Word documents", "*.doc *.docx"),
+            ("Rich Text files", "*.rtf"),
             ("Text files", "*.txt"),
             ("Markdown files", "*.md"),
             ("All files", "*.*")
@@ -388,22 +512,28 @@ class TTSApplication(ctk.CTk):
                 raise ValueError("No text content found in document")
 
             # Step 3: Initialize TTS engine
-            self._update_progress(0.3, "Initializing TTS engine...")
+            model_name = self._model_type.get()
+            device_name = self._device.get()
+            self._update_progress(0.25, f"Loading {model_name} model ({device_name})...")
+            self._update_progress(0.25, f"Downloading/loading model (may take several minutes on first run)...")
+
             config = TTSConfig(
-                model_type=self._model_type.get(),
+                model_type=model_name,
                 language=self._language.get(),
                 voice_reference=Path(self._voice_reference.get()) if self._voice_reference.get() else None,
-                device=self._device.get()
+                device=device_name
             )
 
             if self._tts_engine is None:
                 self._tts_engine = ChatterboxEngine()
 
+            self._update_progress(0.28, f"Initializing {model_name} TTS engine...")
             self._tts_engine.initialize(config)
+            self._update_progress(0.35, "TTS engine ready, starting synthesis...")
 
             # Step 4: Synthesize speech
             def progress_callback(current, total, status):
-                progress = 0.3 + (0.65 * current / total)
+                progress = 0.35 + (0.60 * current / total)
                 self._update_progress(progress, f"Synthesizing: {status}")
 
             result = self._tts_engine.synthesize(
@@ -424,10 +554,13 @@ class TTSApplication(ctk.CTk):
 
         except Exception as e:
             logger.exception("Conversion failed")
-            self.after(0, lambda: CTkMessagebox(
-                title="Error",
-                message=f"Conversion failed:\n{str(e)}",
-                icon="cancel"
+            error_msg = str(e)
+            tb = traceback.format_exc()
+            self.after(0, lambda: ErrorDialog(
+                self,
+                title="Conversion Error",
+                message=f"Conversion failed:\n{error_msg}",
+                full_traceback=tb
             ))
 
         finally:

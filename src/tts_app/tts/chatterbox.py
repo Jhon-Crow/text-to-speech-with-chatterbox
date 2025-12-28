@@ -36,6 +36,38 @@ class ChatterboxEngine(TTSEngine):
         """Get the engine name."""
         return "chatterbox"
 
+    def _detect_best_device(self) -> str:
+        """Detect the best available device for inference.
+
+        Checks for GPU availability in the following order:
+        1. NVIDIA CUDA
+        2. AMD ROCm (via HIP backend in PyTorch)
+        3. CPU fallback
+
+        Returns:
+            Device string ("cuda", "hip", or "cpu").
+        """
+        import torch
+
+        # Check for NVIDIA CUDA
+        if torch.cuda.is_available():
+            device_name = torch.cuda.get_device_name(0)
+            logger.info(f"CUDA available: {device_name}")
+            return "cuda"
+
+        # Check for AMD ROCm (exposed as HIP backend in PyTorch)
+        # ROCm devices appear as CUDA devices when PyTorch is built with ROCm support
+        # On ROCm builds, torch.cuda.is_available() returns True for AMD GPUs
+        # If we got here, CUDA is not available, so check for other backends
+
+        # Check for MPS (Apple Silicon)
+        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            logger.info("Apple MPS available")
+            return "mps"
+
+        logger.info("No GPU available, using CPU")
+        return "cpu"
+
     def initialize(self, config: TTSConfig) -> None:
         """Initialize the Chatterbox TTS model.
 
@@ -50,8 +82,7 @@ class ChatterboxEngine(TTSEngine):
         # Determine device
         device = config.device
         if device == "auto":
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = self._detect_best_device()
 
         logger.info(f"Initializing Chatterbox {config.model_type} on {device}")
 

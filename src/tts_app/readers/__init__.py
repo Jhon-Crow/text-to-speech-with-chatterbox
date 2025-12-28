@@ -6,6 +6,7 @@ from .doc_reader import DOCReader
 from .docx_reader import DOCXReader
 from .text_reader import TextReader
 from .markdown_reader import MarkdownReader
+from .rtf_reader import RTFReader
 from .registry import ReaderRegistry
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "DOCXReader",
     "TextReader",
     "MarkdownReader",
+    "RTFReader",
     "ReaderRegistry",
 ]
