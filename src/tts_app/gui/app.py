@@ -8,11 +8,11 @@ from typing import Optional
 import customtkinter as ctk
 from CTkMessagebox import CTkMessagebox
 
-from ..readers import ReaderRegistry
-from ..readers.registry import create_default_registry
-from ..preprocessors import PreprocessorPipeline, ProcessingContext
-from ..preprocessors.pipeline import create_default_pipeline
-from ..tts import ChatterboxEngine, TTSConfig
+from tts_app.readers import ReaderRegistry
+from tts_app.readers.registry import create_default_registry
+from tts_app.preprocessors import PreprocessorPipeline, ProcessingContext
+from tts_app.preprocessors.pipeline import create_default_pipeline
+from tts_app.tts import ChatterboxEngine, TTSConfig
 
 logger = logging.getLogger(__name__)
 
