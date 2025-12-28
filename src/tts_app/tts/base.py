@@ -16,12 +16,14 @@ class TTSConfig:
         voice_reference: Optional path to a voice reference audio file for cloning.
         device: Device to use ("cuda", "cpu", or "auto").
         chunk_size: Maximum characters per TTS chunk (for long texts).
+        hf_token: Optional HuggingFace token for model download.
     """
     model_type: str = "turbo"
     language: str = "en"
     voice_reference: Optional[Path] = None
     device: str = "auto"
     chunk_size: int = 500  # Characters per chunk
+    hf_token: Optional[str] = None
 
 
 @dataclass

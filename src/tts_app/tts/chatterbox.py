@@ -1,12 +1,23 @@
 """Chatterbox TTS engine implementation."""
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
 from .base import TTSEngine, TTSConfig, TTSResult, ProgressCallback
 
 logger = logging.getLogger(__name__)
+
+
+class HuggingFaceTokenError(RuntimeError):
+    """Error raised when HuggingFace token is required but not configured."""
+    pass
+
+
+class CUDANotAvailableError(RuntimeError):
+    """Error raised when model requires CUDA but it's not available."""
+    pass
 
 
 class ChatterboxEngine(TTSEngine):
@@ -76,6 +87,8 @@ class ChatterboxEngine(TTSEngine):
 
         Raises:
             RuntimeError: If model loading fails.
+            HuggingFaceTokenError: If HuggingFace token is required but not configured.
+            CUDANotAvailableError: If model requires CUDA but it's not available.
         """
         self._config = config
 
@@ -85,6 +98,12 @@ class ChatterboxEngine(TTSEngine):
             device = self._detect_best_device()
 
         logger.info(f"Initializing Chatterbox {config.model_type} on {device}")
+
+        # Set HF_TOKEN environment variable if provided in config
+        # This helps the turbo model which requires token=True by default
+        if hasattr(config, 'hf_token') and config.hf_token:
+            os.environ["HF_TOKEN"] = config.hf_token
+            logger.info("HuggingFace token configured from settings")
 
         try:
             if config.model_type == "turbo":
@@ -103,7 +122,30 @@ class ChatterboxEngine(TTSEngine):
             logger.info("Chatterbox model initialized successfully")
 
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Failed to initialize Chatterbox: {e}")
+
+            # Check for HuggingFace token errors
+            if "Token is required" in error_msg or "LocalTokenNotFoundError" in error_msg:
+                raise HuggingFaceTokenError(
+                    "HuggingFace token is required to download the model.\n\n"
+                    "Please do one of the following:\n"
+                    "1. Enter your HuggingFace token in the 'HF Token' field in the Options section\n"
+                    "2. Set the HF_TOKEN environment variable\n"
+                    "3. Run 'huggingface-cli login' in your terminal\n\n"
+                    "Get your token at: https://huggingface.co/settings/tokens"
+                ) from e
+
+            # Check for CUDA loading errors on CPU machines
+            if "torch.cuda.is_available() is False" in error_msg or "CUDA device" in error_msg:
+                raise CUDANotAvailableError(
+                    "The model was saved for CUDA but your machine doesn't have CUDA available.\n\n"
+                    "This is a known issue with the multilingual model. Please try:\n"
+                    "1. Use the 'Turbo' or 'Standard' model instead\n"
+                    "2. Wait for an upstream fix in the chatterbox-tts library\n\n"
+                    "Technical details: The model needs to be loaded with map_location='cpu'"
+                ) from e
+
             raise RuntimeError(f"Failed to initialize TTS model: {e}") from e
 
     def is_initialized(self) -> bool:

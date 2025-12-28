@@ -146,7 +146,7 @@ class TTSApplication(ctk.CTk):
 
         # Configure window
         self.title("Text to Speech with Chatterbox")
-        self.geometry("700x600")
+        self.geometry("700x700")
         self.minsize(600, 500)
 
         # Set appearance
@@ -158,6 +158,7 @@ class TTSApplication(ctk.CTk):
         self._pipeline: PreprocessorPipeline = create_default_pipeline()
         self._tts_engine: Optional[ChatterboxEngine] = None
         self._processing = False
+        self._progress_animation_id = None  # Track progress bar animation
 
         # Variables
         self._input_file = ctk.StringVar()
@@ -167,15 +168,20 @@ class TTSApplication(ctk.CTk):
         self._language = ctk.StringVar(value="en")
         self._ignore_footnotes = ctk.BooleanVar(value=True)
         self._device = ctk.StringVar(value="auto")
+        self._hf_token = ctk.StringVar()
 
         # Build UI
         self._create_widgets()
 
     def _create_widgets(self):
         """Create all UI widgets."""
-        # Main container with padding
-        main_frame = ctk.CTkFrame(self)
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Scrollable main container
+        self._scrollable_frame = ctk.CTkScrollableFrame(self)
+        self._scrollable_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Main frame inside scrollable area
+        main_frame = ctk.CTkFrame(self._scrollable_frame)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         # Title
         title_label = ctk.CTkLabel(
@@ -311,6 +317,30 @@ class TTSApplication(ctk.CTk):
             font=ctk.CTkFont(size=11)
         )
         device_help.pack(anchor="w", padx=(80, 0))
+
+        # HuggingFace Token section
+        hf_token_frame = ctk.CTkFrame(options_frame)
+        hf_token_frame.pack(fill="x", pady=(10, 0))
+
+        ctk.CTkLabel(hf_token_frame, text="HF Token (optional):").pack(side="left")
+
+        self._hf_token_entry = ctk.CTkEntry(
+            hf_token_frame,
+            textvariable=self._hf_token,
+            placeholder_text="Enter HuggingFace token for Turbo model",
+            show="*",
+            width=300
+        )
+        self._hf_token_entry.pack(side="left", padx=(10, 0), fill="x", expand=True)
+
+        # HF Token help text
+        hf_token_help = ctk.CTkLabel(
+            options_frame,
+            text="Required for Turbo model. Get token at: huggingface.co/settings/tokens",
+            text_color="gray",
+            font=ctk.CTkFont(size=11)
+        )
+        hf_token_help.pack(anchor="w", padx=(80, 0), pady=(2, 10))
 
         # Footnotes option
         footnote_frame = ctk.CTkFrame(options_frame)
@@ -514,21 +544,30 @@ class TTSApplication(ctk.CTk):
             # Step 3: Initialize TTS engine
             model_name = self._model_type.get()
             device_name = self._device.get()
-            self._update_progress(0.25, f"Loading {model_name} model ({device_name})...")
-            self._update_progress(0.25, f"Downloading/loading model (may take several minutes on first run)...")
+            self._update_progress(0.25, f"Initializing {model_name} model on {device_name}...")
+
+            # Start indeterminate animation for model download/initialization
+            # This provides visual feedback that something is happening during long waits
+            self.after(0, self._start_indeterminate_progress)
+            self.after(0, lambda: self._progress_label.configure(
+                text=f"Downloading/loading {model_name} model (may take several minutes on first run)..."
+            ))
 
             config = TTSConfig(
                 model_type=model_name,
                 language=self._language.get(),
                 voice_reference=Path(self._voice_reference.get()) if self._voice_reference.get() else None,
-                device=device_name
+                device=device_name,
+                hf_token=self._hf_token.get() if self._hf_token.get() else None
             )
 
             if self._tts_engine is None:
                 self._tts_engine = ChatterboxEngine()
 
-            self._update_progress(0.28, f"Initializing {model_name} TTS engine...")
             self._tts_engine.initialize(config)
+
+            # Stop indeterminate animation and switch back to determinate progress
+            self.after(0, self._stop_indeterminate_progress)
             self._update_progress(0.35, "TTS engine ready, starting synthesis...")
 
             # Step 4: Synthesize speech
@@ -556,6 +595,8 @@ class TTSApplication(ctk.CTk):
             logger.exception("Conversion failed")
             error_msg = str(e)
             tb = traceback.format_exc()
+            # Stop indeterminate progress if it was running
+            self.after(0, self._stop_indeterminate_progress)
             self.after(0, lambda: ErrorDialog(
                 self,
                 title="Conversion Error",
@@ -572,6 +613,16 @@ class TTSApplication(ctk.CTk):
         self.after(0, lambda: self._progress_bar.set(value))
         self.after(0, lambda: self._progress_label.configure(text=status))
         self.after(0, lambda: self._status_label.configure(text=status))
+
+    def _start_indeterminate_progress(self):
+        """Start indeterminate progress bar animation (for long operations without known progress)."""
+        self._progress_bar.configure(mode="indeterminate")
+        self._progress_bar.start()
+
+    def _stop_indeterminate_progress(self):
+        """Stop indeterminate progress bar animation and switch back to determinate mode."""
+        self._progress_bar.stop()
+        self._progress_bar.configure(mode="determinate")
 
     def _reset_ui(self):
         """Reset UI after conversion."""
