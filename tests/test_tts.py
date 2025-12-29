@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, patch
 
 from tts_app.tts import TTSEngine, TTSConfig, ChatterboxEngine
 from tts_app.tts.base import TTSResult
-from tts_app.tts.chatterbox import HuggingFaceTokenError, CUDANotAvailableError
+from tts_app.tts.chatterbox import (
+    HuggingFaceTokenError,
+    CUDANotAvailableError,
+    _patch_torch_load_for_cpu,
+)
 
 
 class TestTTSConfig:
@@ -177,3 +181,87 @@ class TestChatterboxErrorHandling:
         """Test that CUDANotAvailableError can be raised with message."""
         with pytest.raises(CUDANotAvailableError, match="CUDA"):
             raise CUDANotAvailableError("CUDA not available")
+
+
+class TestTorchLoadPatch:
+    """Tests for the torch.load CPU patching workaround."""
+
+    def test_patch_applied_for_cpu_device(self):
+        """Test that torch.load is patched when device is 'cpu'."""
+        import torch
+
+        original_load = torch.load
+        call_args = []
+
+        # Mock torch.load to record calls
+        def mock_load(f, map_location=None, **kwargs):
+            call_args.append({"map_location": map_location})
+            return {}
+
+        with patch.object(torch, "load", mock_load):
+            with _patch_torch_load_for_cpu("cpu"):
+                # The patched version should default map_location to "cpu"
+                torch.load("dummy_path")
+
+        assert len(call_args) == 1
+        assert call_args[0]["map_location"] == "cpu"
+
+    def test_patch_applied_for_mps_device(self):
+        """Test that torch.load is patched when device is 'mps'."""
+        import torch
+
+        call_args = []
+
+        def mock_load(f, map_location=None, **kwargs):
+            call_args.append({"map_location": map_location})
+            return {}
+
+        with patch.object(torch, "load", mock_load):
+            with _patch_torch_load_for_cpu("mps"):
+                torch.load("dummy_path")
+
+        assert len(call_args) == 1
+        assert call_args[0]["map_location"] == "cpu"
+
+    def test_patch_preserves_explicit_map_location(self):
+        """Test that explicit map_location is preserved when patching."""
+        import torch
+
+        call_args = []
+
+        def mock_load(f, map_location=None, **kwargs):
+            call_args.append({"map_location": map_location})
+            return {}
+
+        with patch.object(torch, "load", mock_load):
+            with _patch_torch_load_for_cpu("cpu"):
+                # Explicitly pass map_location - it should be preserved
+                torch.load("dummy_path", map_location="cuda:0")
+
+        assert len(call_args) == 1
+        assert call_args[0]["map_location"] == "cuda:0"
+
+    def test_patch_restored_after_context(self):
+        """Test that torch.load is restored after the context exits."""
+        import torch
+
+        original_load = torch.load
+
+        with _patch_torch_load_for_cpu("cpu"):
+            # During the context, load may be patched
+            pass
+
+        # After the context, should be restored
+        assert torch.load is original_load
+
+    def test_no_patch_for_cuda_when_available(self):
+        """Test that torch.load is not patched for CUDA when available."""
+        import torch
+
+        original_load = torch.load
+
+        # Mock cuda as available
+        with patch.object(torch.cuda, "is_available", return_value=True):
+            with _patch_torch_load_for_cpu("cuda"):
+                # Should not be patched when CUDA is available
+                assert torch.load is original_load
