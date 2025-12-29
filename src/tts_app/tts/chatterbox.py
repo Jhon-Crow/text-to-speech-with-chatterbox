@@ -2,12 +2,47 @@
 
 import logging
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
 from .base import TTSEngine, TTSConfig, TTSResult, ProgressCallback
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _patch_torch_load_for_cpu(device: str):
+    """Context manager that patches torch.load to use map_location for CPU/MPS devices.
+
+    This is a workaround for the chatterbox multilingual model which doesn't properly
+    handle loading models that were saved on CUDA devices when running on CPU.
+
+    See: https://github.com/resemble-ai/chatterbox/issues/96
+
+    Args:
+        device: The target device ("cpu", "cuda", "mps", etc.)
+    """
+    import torch
+
+    # Only patch if we're loading on a non-CUDA device
+    if device in ("cpu", "mps") or (device == "cuda" and not torch.cuda.is_available()):
+        original_torch_load = torch.load
+
+        def patched_torch_load(f, map_location=None, **kwargs):
+            # If no map_location specified, default to CPU for safe loading
+            if map_location is None:
+                map_location = "cpu"
+            return original_torch_load(f, map_location=map_location, **kwargs)
+
+        torch.load = patched_torch_load
+        try:
+            yield
+        finally:
+            torch.load = original_torch_load
+    else:
+        # No patching needed for CUDA devices
+        yield
 
 
 class HuggingFaceTokenError(RuntimeError):
@@ -112,7 +147,10 @@ class ChatterboxEngine(TTSEngine):
 
             elif config.model_type == "multilingual":
                 from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-                self._model = ChatterboxMultilingualTTS.from_pretrained(device=device)
+                # Use patch to handle CUDA-saved models on CPU/MPS devices
+                # See: https://github.com/resemble-ai/chatterbox/issues/96
+                with _patch_torch_load_for_cpu(device):
+                    self._model = ChatterboxMultilingualTTS.from_pretrained(device=device)
 
             else:  # standard
                 from chatterbox.tts import ChatterboxTTS
@@ -140,9 +178,9 @@ class ChatterboxEngine(TTSEngine):
             if "torch.cuda.is_available() is False" in error_msg or "CUDA device" in error_msg:
                 raise CUDANotAvailableError(
                     "The model was saved for CUDA but your machine doesn't have CUDA available.\n\n"
-                    "This is a known issue with the multilingual model. Please try:\n"
+                    "This error should have been handled automatically. Please try:\n"
                     "1. Use the 'Turbo' or 'Standard' model instead\n"
-                    "2. Wait for an upstream fix in the chatterbox-tts library\n\n"
+                    "2. Report this issue if it persists\n\n"
                     "Technical details: The model needs to be loaded with map_location='cpu'"
                 ) from e
 
