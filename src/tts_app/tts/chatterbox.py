@@ -77,11 +77,26 @@ class ChatterboxEngine(TTSEngine):
         self._model = None
         self._config: Optional[TTSConfig] = None
         self._initialized = False
+        self._vram_warning: Optional[str] = None
+
+    def get_vram_warning(self) -> Optional[str]:
+        """Get any VRAM warning message from initialization.
+
+        Returns:
+            Warning message if GPU VRAM is insufficient, None otherwise.
+        """
+        return self._vram_warning
 
     @property
     def name(self) -> str:
         """Get the engine name."""
         return "chatterbox"
+
+    # Minimum VRAM recommended for models (in GB)
+    # Multilingual and Standard models are ~500M params, Turbo is ~350M params
+    MIN_VRAM_MULTILINGUAL_GB = 3.0  # Multilingual needs more for language embeddings
+    MIN_VRAM_STANDARD_GB = 2.5
+    MIN_VRAM_TURBO_GB = 2.0
 
     def _detect_best_device(self) -> str:
         """Detect the best available device for inference.
@@ -103,7 +118,8 @@ class ChatterboxEngine(TTSEngine):
         if torch.cuda.is_available():
             try:
                 device_name = torch.cuda.get_device_name(0)
-                logger.info(f"CUDA available: {device_name}")
+                vram_gb = self._get_gpu_vram_gb()
+                logger.info(f"CUDA available: {device_name} ({vram_gb:.1f} GB VRAM)")
                 return "cuda"
             except Exception as e:
                 logger.warning(f"CUDA detected but failed to get device info: {e}")
@@ -116,6 +132,63 @@ class ChatterboxEngine(TTSEngine):
 
         logger.info("No GPU available, using CPU")
         return "cpu"
+
+    def _get_gpu_vram_gb(self) -> float:
+        """Get the total VRAM of the GPU in gigabytes.
+
+        Returns:
+            VRAM in GB, or 0.0 if unable to detect.
+        """
+        import torch
+
+        if not torch.cuda.is_available():
+            return 0.0
+
+        try:
+            props = torch.cuda.get_device_properties(0)
+            vram_bytes = props.total_memory
+            return vram_bytes / (1024 ** 3)
+        except Exception as e:
+            logger.warning(f"Failed to get GPU VRAM: {e}")
+            return 0.0
+
+    def _check_vram_for_model(self, model_type: str) -> tuple[bool, str]:
+        """Check if GPU has enough VRAM for the selected model.
+
+        Args:
+            model_type: The model type ("turbo", "standard", "multilingual").
+
+        Returns:
+            Tuple of (is_sufficient, warning_message).
+            If VRAM is sufficient or can't be detected, returns (True, "").
+        """
+        import torch
+
+        if not torch.cuda.is_available():
+            return True, ""
+
+        vram_gb = self._get_gpu_vram_gb()
+        if vram_gb == 0.0:
+            return True, ""  # Can't detect, proceed anyway
+
+        # Determine minimum VRAM for model
+        min_vram = {
+            "turbo": self.MIN_VRAM_TURBO_GB,
+            "standard": self.MIN_VRAM_STANDARD_GB,
+            "multilingual": self.MIN_VRAM_MULTILINGUAL_GB,
+        }.get(model_type, self.MIN_VRAM_STANDARD_GB)
+
+        if vram_gb < min_vram:
+            device_name = torch.cuda.get_device_name(0)
+            warning = (
+                f"Your GPU ({device_name}) has {vram_gb:.1f} GB VRAM, "
+                f"but {model_type} model needs ~{min_vram:.1f} GB. "
+                f"This may cause freezing or out-of-memory errors. "
+                f"Consider using CPU mode or the Turbo model for better stability."
+            )
+            return False, warning
+
+        return True, ""
 
     def _validate_device(self, requested_device: str) -> str:
         """Validate the requested device and return a valid device.
@@ -169,6 +242,18 @@ class ChatterboxEngine(TTSEngine):
 
         # Validate and determine device (with fallback to CPU if GPU not available)
         device = self._validate_device(config.device)
+
+        # Check VRAM for GPU devices and warn if insufficient
+        if device == "cuda":
+            is_sufficient, warning = self._check_vram_for_model(config.model_type)
+            if not is_sufficient:
+                logger.warning(warning)
+                # Store warning for UI to display
+                self._vram_warning = warning
+            else:
+                self._vram_warning = None
+        else:
+            self._vram_warning = None
 
         logger.info(f"Initializing Chatterbox {config.model_type} on {device}")
 
