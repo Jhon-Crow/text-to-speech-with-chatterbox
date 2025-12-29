@@ -13,10 +13,12 @@ class ProcessingContext:
         footnotes: List of footnotes from the document.
         ignore_footnotes: Whether to remove footnote references.
         page_count: Number of pages in the document.
+        language: Language code for language-specific processing (e.g., "en", "ru").
     """
     footnotes: list[str]
     ignore_footnotes: bool = False
     page_count: Optional[int] = None
+    language: Optional[str] = None
 
 
 class TextPreprocessor(ABC):

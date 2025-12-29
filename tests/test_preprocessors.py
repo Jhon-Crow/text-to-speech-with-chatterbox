@@ -322,6 +322,109 @@ class TestSymbolConverter:
         assert "well-known" in result or "well known" in result
 
 
+class TestSymbolConverterLanguageAware:
+    """Tests for language-aware symbol conversion."""
+
+    def test_russian_text_uses_russian_symbols(self):
+        """Test that Russian text uses Russian symbol words."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[], language="ru")
+
+        text = "Цена $100"
+        result = processor.process(text, ctx)
+
+        # Should use Russian "долларов" instead of English "dollars"
+        assert "долларов" in result
+
+    def test_russian_text_uses_russian_equals(self):
+        """Test that Russian text uses Russian 'равно' for equals."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[], language="ru")
+
+        text = "x = 5"
+        result = processor.process(text, ctx)
+
+        # Should use Russian "равно" instead of English "equals"
+        assert "равно" in result
+
+    def test_russian_text_uses_russian_percent(self):
+        """Test that Russian text uses Russian 'процентов' for percent."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[], language="ru")
+
+        text = "Рост составил 50%"
+        result = processor.process(text, ctx)
+
+        # Should use Russian "процентов" instead of English "percent"
+        assert "процентов" in result
+
+    def test_russian_numbered_list(self):
+        """Test that Russian text uses Russian 'Пункт' for list items."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[], language="ru")
+
+        text = "1. Первый пункт\n2. Второй пункт"
+        result = processor.process(text, ctx)
+
+        # Should use Russian "Пункт" instead of English "Point"
+        assert "Пункт 1" in result
+        assert "Пункт 2" in result
+
+    def test_english_text_uses_english_symbols(self):
+        """Test that English text uses English symbol words."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[], language="en")
+
+        text = "Price is $100"
+        result = processor.process(text, ctx)
+
+        assert "dollars" in result
+
+    def test_auto_detect_russian_from_text(self):
+        """Test that symbol converter auto-detects Russian text."""
+        processor = SymbolConverter()
+        # No language specified in context, should auto-detect
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "Привет мир! Цена $100"
+        result = processor.process(text, ctx)
+
+        # Should detect Russian and use Russian "долларов"
+        assert "долларов" in result
+
+    def test_auto_detect_english_from_text(self):
+        """Test that symbol converter auto-detects English text."""
+        processor = SymbolConverter()
+        # No language specified in context, should auto-detect
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "Hello world! Price is $100"
+        result = processor.process(text, ctx)
+
+        # Should detect English and use English "dollars"
+        assert "dollars" in result
+
+    def test_russian_ampersand(self):
+        """Test Russian ampersand conversion."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[], language="ru")
+
+        text = "Соль & перец"
+        result = processor.process(text, ctx)
+
+        assert " и " in result
+
+    def test_russian_number_hash(self):
+        """Test Russian number hash conversion."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[], language="ru")
+
+        text = "Задача #42"
+        result = processor.process(text, ctx)
+
+        assert "номер" in result
+
+
 class TestDefaultPipeline:
     """Tests for the default pipeline."""
 

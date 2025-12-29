@@ -294,6 +294,8 @@ class TTSApplication(ctk.CTk):
         self._ignore_footnotes = ctk.BooleanVar(value=True)
         self._device = ctk.StringVar(value="auto")
         self._hf_token = ctk.StringVar()
+        self._use_text_input = ctk.BooleanVar(value=False)  # Toggle for text input mode
+        self._direct_text = ""  # Store direct text input
 
         # Build UI
         self._create_widgets()
@@ -317,13 +319,52 @@ class TTSApplication(ctk.CTk):
         title_label.pack(pady=(0, 20))
 
         # Input file section
-        self._create_file_section(
-            main_frame,
+        self._input_file_frame = ctk.CTkFrame(main_frame)
+        self._input_file_frame.pack(fill="x", pady=(0, 10))
+        self._create_file_section_in_frame(
+            self._input_file_frame,
             "Input Document:",
             self._input_file,
             self._browse_input,
             self._get_input_filetypes()
         )
+
+        # Text input toggle
+        text_toggle_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        text_toggle_frame.pack(fill="x", pady=(0, 5))
+
+        self._text_toggle_checkbox = ctk.CTkCheckBox(
+            text_toggle_frame,
+            text="Use text input instead of file",
+            variable=self._use_text_input,
+            command=self._on_text_input_toggle
+        )
+        self._text_toggle_checkbox.pack(anchor="w")
+
+        # Collapsible text input section (hidden by default)
+        self._text_input_frame = ctk.CTkFrame(main_frame)
+        # Don't pack yet - will be shown when checkbox is toggled
+
+        text_input_label = ctk.CTkLabel(
+            self._text_input_frame,
+            text="Enter text to convert to speech:"
+        )
+        text_input_label.pack(anchor="w", pady=(0, 5))
+
+        self._text_input_box = ctk.CTkTextbox(
+            self._text_input_frame,
+            height=150,
+            wrap="word"
+        )
+        self._text_input_box.pack(fill="x", pady=(0, 5))
+
+        text_input_help = ctk.CTkLabel(
+            self._text_input_frame,
+            text="Paste or type your text here. Supports multiple paragraphs.",
+            text_color="gray",
+            font=ctk.CTkFont(size=11)
+        )
+        text_input_help.pack(anchor="w")
 
         # Output file section
         self._create_file_section(
@@ -548,6 +589,10 @@ class TTSApplication(ctk.CTk):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="x", pady=(0, 10))
 
+        self._create_file_section_in_frame(frame, label_text, variable, browse_command, filetypes, save)
+
+    def _create_file_section_in_frame(self, frame, label_text, variable, browse_command, filetypes, save=False):
+        """Create file selection widgets inside an existing frame."""
         label = ctk.CTkLabel(frame, text=label_text)
         label.pack(anchor="w")
 
@@ -623,6 +668,18 @@ class TTSApplication(ctk.CTk):
         if filename:
             self._voice_reference.set(filename)
 
+    def _on_text_input_toggle(self):
+        """Handle toggle between file input and text input mode."""
+        if self._use_text_input.get():
+            # Show text input, hide file input
+            self._input_file_frame.pack_forget()
+            self._text_input_frame.pack(fill="x", pady=(0, 10), after=self._text_toggle_checkbox.master)
+        else:
+            # Show file input, hide text input
+            self._text_input_frame.pack_forget()
+            # Re-pack file input frame in the correct position
+            self._input_file_frame.pack(fill="x", pady=(0, 10), before=self._text_toggle_checkbox.master)
+
     def _on_model_change(self):
         """Handle model type change."""
         if self._model_type.get() == "multilingual":
@@ -641,30 +698,43 @@ class TTSApplication(ctk.CTk):
         if self._processing:
             return
 
-        # Validate inputs
-        input_file = self._input_file.get().strip()
+        # Validate inputs based on mode
+        if self._use_text_input.get():
+            # Text input mode
+            text_content = self._text_input_box.get("1.0", "end-1c").strip()
+            if not text_content:
+                CTkMessagebox(
+                    title="Error",
+                    message="Please enter some text to convert.",
+                    icon="cancel"
+                )
+                return
+            self._direct_text = text_content
+        else:
+            # File input mode
+            input_file = self._input_file.get().strip()
+            if not input_file:
+                CTkMessagebox(
+                    title="Error",
+                    message="Please select an input file.",
+                    icon="cancel"
+                )
+                return
+
+            if not Path(input_file).exists():
+                CTkMessagebox(
+                    title="Error",
+                    message=f"Input file not found: {input_file}",
+                    icon="cancel"
+                )
+                return
+            self._direct_text = ""
+
         output_file = self._output_file.get().strip()
-
-        if not input_file:
-            CTkMessagebox(
-                title="Error",
-                message="Please select an input file.",
-                icon="cancel"
-            )
-            return
-
         if not output_file:
             CTkMessagebox(
                 title="Error",
                 message="Please select an output file location.",
-                icon="cancel"
-            )
-            return
-
-        if not Path(input_file).exists():
-            CTkMessagebox(
-                title="Error",
-                message=f"Input file not found: {input_file}",
                 icon="cancel"
             )
             return
@@ -692,40 +762,58 @@ class TTSApplication(ctk.CTk):
     def _run_conversion(self):
         """Run the conversion process (in background thread)."""
         try:
-            input_path = Path(self._input_file.get())
             output_path = Path(self._output_file.get())
 
-            # Step 1: Read document
-            self._update_progress(0.1, "Reading document...")
-            content = self._reader_registry.read(input_path)
-            logger.info(f"Read document: {content.page_count} pages, {len(content.text)} chars")
+            # Step 1: Get text content (from file or direct input)
+            if self._direct_text:
+                # Direct text input mode
+                self._update_progress(0.1, "Processing text input...")
+                raw_text = self._direct_text
+                footnotes = []
+                page_count = None
+                logger.info(f"Using direct text input: {len(raw_text)} chars")
+            else:
+                # File input mode
+                input_path = Path(self._input_file.get())
+                self._update_progress(0.1, "Reading document...")
+                content = self._reader_registry.read(input_path)
+                raw_text = content.text
+                footnotes = content.footnotes
+                page_count = content.page_count
+                logger.info(f"Read document: {content.page_count} pages, {len(content.text)} chars")
 
-            # Step 2: Preprocess text
+            # Step 2: Detect language (for symbol preprocessing and TTS)
+            model_name = self._model_type.get()
+            language = self._language.get()
+
+            # Detect language from raw text BEFORE preprocessing
+            # This is important so symbols are converted using the correct language
+            from tts_app.utils.language_detection import detect_primary_language, get_language_name
+            detected_language = detect_primary_language(raw_text)
+            detected_name = get_language_name(detected_language)
+            logger.info(f"Detected text language: {detected_language} ({detected_name})")
+
+            # For multilingual model with auto-detect, use detected language for TTS
+            if model_name == "multilingual" and language == "auto":
+                self._update_progress(0.15, f"Detected language: {detected_name}")
+                language = detected_language
+
+            # Step 3: Preprocess text with detected language
             self._update_progress(0.2, "Preprocessing text...")
             context = ProcessingContext(
-                footnotes=content.footnotes,
+                footnotes=footnotes,
                 ignore_footnotes=self._ignore_footnotes.get(),
-                page_count=content.page_count
+                page_count=page_count,
+                language=detected_language  # Pass detected language for symbol conversion
             )
-            processed_text = self._pipeline.process(content.text, context)
+            processed_text = self._pipeline.process(raw_text, context)
             logger.info(f"Processed text: {len(processed_text)} chars")
 
             if not processed_text.strip():
-                raise ValueError("No text content found in document")
+                raise ValueError("No text content found")
 
-            # Step 3: Initialize TTS engine
-            model_name = self._model_type.get()
+            # Step 4: Initialize TTS engine
             device_name = self._device.get()
-
-            # Handle language auto-detection for multilingual model
-            language = self._language.get()
-            if model_name == "multilingual" and language == "auto":
-                self._update_progress(0.22, "Detecting language...")
-                from tts_app.utils.language_detection import detect_primary_language, get_language_name
-                language = detect_primary_language(processed_text)
-                detected_name = get_language_name(language)
-                logger.info(f"Auto-detected language: {language} ({detected_name})")
-                self._update_progress(0.23, f"Detected language: {detected_name}")
 
             self._update_progress(0.25, f"Initializing {model_name} model on {device_name}...")
 
