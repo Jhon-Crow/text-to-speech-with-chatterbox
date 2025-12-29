@@ -282,6 +282,8 @@ class TTSApplication(ctk.CTk):
         self._processing = False
         self._cancel_requested = False  # Flag to signal cancellation
         self._progress_animation_id = None  # Track progress bar animation
+        self._button_animation_id = None  # Track button ellipsis animation
+        self._ellipsis_state = 0  # Current ellipsis state (0-3)
 
         # Variables
         self._input_file = ctk.StringVar()
@@ -401,6 +403,7 @@ class TTSApplication(ctk.CTk):
         ctk.CTkLabel(self._language_frame, text="Language:").pack(side="left")
 
         languages = [
+            ("auto", "Auto-detect"),
             ("en", "English"), ("fr", "French"), ("de", "German"),
             ("es", "Spanish"), ("it", "Italian"), ("pt", "Portuguese"),
             ("ru", "Russian"), ("zh", "Chinese"), ("ja", "Japanese"),
@@ -415,6 +418,15 @@ class TTSApplication(ctk.CTk):
         )
         self._language_menu.pack(side="left", padx=(20, 0))
         self._language_frame.pack_forget()  # Hidden by default
+
+        # Language auto-detect help text
+        self._language_help = ctk.CTkLabel(
+            self._language_frame,
+            text="Auto-detect works best for single-language texts",
+            text_color="gray",
+            font=ctk.CTkFont(size=11)
+        )
+        self._language_help.pack(side="left", padx=(10, 0))
 
         # Device selection
         device_frame = ctk.CTkFrame(options_frame)
@@ -432,14 +444,23 @@ class TTSApplication(ctk.CTk):
             )
             rb.pack(side="left", padx=(20, 0))
 
-        # Device help text
+        # Device help text (more detailed with AMD information)
         device_help = ctk.CTkLabel(
             options_frame,
-            text="Auto detects: NVIDIA (CUDA), AMD (ROCm), Apple (MPS)",
+            text="Auto detects: NVIDIA (CUDA), AMD (ROCm on Linux), Apple (MPS). Note: AMD GPUs on Windows use CPU.",
             text_color="gray",
             font=ctk.CTkFont(size=11)
         )
         device_help.pack(anchor="w", padx=(80, 0))
+
+        # CPU performance note
+        cpu_note = ctk.CTkLabel(
+            options_frame,
+            text="CPU mode is slower (5-15 min/chunk). For faster CPU: use Turbo model, reduce text length.",
+            text_color="gray",
+            font=ctk.CTkFont(size=11)
+        )
+        cpu_note.pack(anchor="w", padx=(80, 0))
 
         # HuggingFace Token section
         hf_token_frame = ctk.CTkFrame(options_frame)
@@ -651,9 +672,10 @@ class TTSApplication(ctk.CTk):
         # Start conversion in background thread
         self._processing = True
         self._cancel_requested = False
-        self._convert_btn.configure(state="disabled", text="Converting...")
+        self._convert_btn.configure(state="disabled", text="Converting")
         self._cancel_btn.pack(side="right", fill="x", expand=True, padx=(5, 0))  # Show cancel button
         self._progress_bar.set(0)
+        self._start_button_animation()  # Start ellipsis animation
 
         thread = threading.Thread(target=self._run_conversion)
         thread.daemon = True
@@ -663,7 +685,7 @@ class TTSApplication(ctk.CTk):
         """Request cancellation of the ongoing conversion."""
         if self._processing and not self._cancel_requested:
             self._cancel_requested = True
-            self._cancel_btn.configure(state="disabled", text="Cancelling...")
+            self._cancel_btn.configure(state="disabled", text="Cancelling")
             self._update_progress(0, "Cancelling... (saving generated audio)")
             logger.info("Cancellation requested by user")
 
@@ -694,6 +716,17 @@ class TTSApplication(ctk.CTk):
             # Step 3: Initialize TTS engine
             model_name = self._model_type.get()
             device_name = self._device.get()
+
+            # Handle language auto-detection for multilingual model
+            language = self._language.get()
+            if model_name == "multilingual" and language == "auto":
+                self._update_progress(0.22, "Detecting language...")
+                from tts_app.utils.language_detection import detect_primary_language, get_language_name
+                language = detect_primary_language(processed_text)
+                detected_name = get_language_name(language)
+                logger.info(f"Auto-detected language: {language} ({detected_name})")
+                self._update_progress(0.23, f"Detected language: {detected_name}")
+
             self._update_progress(0.25, f"Initializing {model_name} model on {device_name}...")
 
             # Start indeterminate animation for model download/initialization
@@ -705,7 +738,7 @@ class TTSApplication(ctk.CTk):
 
             config = TTSConfig(
                 model_type=model_name,
-                language=self._language.get(),
+                language=language,
                 voice_reference=Path(self._voice_reference.get()) if self._voice_reference.get() else None,
                 device=device_name,
                 hf_token=self._hf_token.get() if self._hf_token.get() else None
@@ -721,9 +754,18 @@ class TTSApplication(ctk.CTk):
             self._update_progress(0.35, "TTS engine ready, starting synthesis...")
 
             # Step 4: Synthesize speech
-            def progress_callback(current, total, status):
+            def progress_callback(current, total, status, estimated_remaining):
                 progress = 0.35 + (0.60 * current / total)
-                self._update_progress(progress, f"Synthesizing: {status}")
+                # Format estimated time remaining
+                time_str = ""
+                if estimated_remaining is not None and estimated_remaining > 0:
+                    mins = int(estimated_remaining // 60)
+                    secs = int(estimated_remaining % 60)
+                    if mins > 0:
+                        time_str = f" (~{mins}m {secs}s remaining)"
+                    else:
+                        time_str = f" (~{secs}s remaining)"
+                self._update_progress(progress, f"Synthesizing: {status}{time_str}")
 
             def cancel_check():
                 return self._cancel_requested
@@ -792,8 +834,36 @@ class TTSApplication(ctk.CTk):
         self._progress_bar.stop()
         self._progress_bar.configure(mode="determinate")
 
+    def _start_button_animation(self):
+        """Start ellipsis animation on buttons to show activity."""
+        self._ellipsis_state = 0
+        self._animate_button_ellipsis()
+
+    def _stop_button_animation(self):
+        """Stop ellipsis animation on buttons."""
+        if self._button_animation_id:
+            self.after_cancel(self._button_animation_id)
+            self._button_animation_id = None
+
+    def _animate_button_ellipsis(self):
+        """Animate ellipsis on Converting.../Cancelling... buttons."""
+        if not self._processing:
+            return
+
+        ellipsis = "." * (self._ellipsis_state % 4)
+        padded_ellipsis = ellipsis.ljust(3)  # Pad to 3 chars to prevent button resizing
+
+        if self._cancel_requested:
+            self._cancel_btn.configure(text=f"Cancelling{padded_ellipsis}")
+        else:
+            self._convert_btn.configure(text=f"Converting{padded_ellipsis}")
+
+        self._ellipsis_state += 1
+        self._button_animation_id = self.after(400, self._animate_button_ellipsis)
+
     def _reset_ui(self):
         """Reset UI after conversion."""
+        self._stop_button_animation()  # Stop ellipsis animation
         self._convert_btn.configure(state="normal", text="Convert to Speech")
         self._cancel_btn.pack_forget()  # Hide cancel button
         self._cancel_btn.configure(state="normal", text="Cancel")  # Reset cancel button

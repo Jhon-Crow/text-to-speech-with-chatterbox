@@ -48,7 +48,8 @@ class TTSResult:
     chunks_total: int = 0
 
 
-ProgressCallback = Callable[[int, int, str], None]  # (current, total, status)
+# (current, total, status, estimated_remaining_seconds or None)
+ProgressCallback = Callable[[int, int, str, Optional[float]], None]
 CancelCheck = Callable[[], bool]  # Returns True if generation should be cancelled
 
 

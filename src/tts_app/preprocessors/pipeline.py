@@ -5,6 +5,7 @@ from typing import Optional
 from .base import TextPreprocessor, ProcessingContext
 from .page_numbers import PageNumberRemover
 from .footnotes import FootnoteHandler
+from .symbols import SymbolConverter
 
 
 class PreprocessorPipeline:
@@ -108,9 +109,10 @@ def create_default_pipeline() -> PreprocessorPipeline:
     """Create a pipeline with default preprocessors.
 
     Returns:
-        A pipeline with page number and footnote handlers.
+        A pipeline with page number, footnote, and symbol handlers.
     """
     pipeline = PreprocessorPipeline()
     pipeline.add(PageNumberRemover())
     pipeline.add(FootnoteHandler())
+    pipeline.add(SymbolConverter())
     return pipeline

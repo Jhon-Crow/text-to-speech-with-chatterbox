@@ -3,6 +3,7 @@
 from .base import TextPreprocessor, ProcessingContext
 from .page_numbers import PageNumberRemover
 from .footnotes import FootnoteHandler
+from .symbols import SymbolConverter
 from .pipeline import PreprocessorPipeline
 
 __all__ = [
@@ -10,5 +11,6 @@ __all__ = [
     "ProcessingContext",
     "PageNumberRemover",
     "FootnoteHandler",
+    "SymbolConverter",
     "PreprocessorPipeline",
 ]

@@ -6,6 +6,7 @@ from tts_app.preprocessors import (
     TextPreprocessor,
     PageNumberRemover,
     FootnoteHandler,
+    SymbolConverter,
     PreprocessorPipeline,
 )
 from tts_app.preprocessors.base import ProcessingContext
@@ -213,6 +214,114 @@ class TestPreprocessorPipeline:
         assert "\n\n\n" not in result
 
 
+class TestSymbolConverter:
+    """Tests for SymbolConverter."""
+
+    def test_name(self):
+        """Test processor name."""
+        processor = SymbolConverter()
+        assert processor.name == "symbol_converter"
+
+    def test_convert_equals_in_equation(self):
+        """Test converting equals sign in equations."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "The formula is x = 5"
+        result = processor.process(text, ctx)
+
+        assert "equals" in result.lower()
+        assert " = " not in result
+
+    def test_convert_numbered_list_period(self):
+        """Test converting numbered lists with periods."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "1. First item\n2. Second item\n3. Third item"
+        result = processor.process(text, ctx)
+
+        assert "Point 1" in result
+        assert "Point 2" in result
+        assert "Point 3" in result
+
+    def test_convert_numbered_list_parenthesis(self):
+        """Test converting numbered lists with parentheses."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "1) First item\n2) Second item"
+        result = processor.process(text, ctx)
+
+        # Parenthesis-style should just use the number
+        assert "1." in result
+        assert "2." in result
+
+    def test_convert_percentage(self):
+        """Test converting percentage symbol."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "The growth was 50%"
+        result = processor.process(text, ctx)
+
+        assert "percent" in result.lower()
+        assert "%" not in result
+
+    def test_convert_currency(self):
+        """Test converting currency symbols."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "The price is $100"
+        result = processor.process(text, ctx)
+
+        assert "dollars" in result.lower()
+
+    def test_convert_ampersand(self):
+        """Test converting ampersand to 'and'."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "Salt & pepper"
+        result = processor.process(text, ctx)
+
+        assert " and " in result.lower()
+        assert "&" not in result
+
+    def test_convert_hash_number(self):
+        """Test converting hash with number."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "Issue #42"
+        result = processor.process(text, ctx)
+
+        assert "number 42" in result.lower()
+        assert "#" not in result
+
+    def test_convert_arrow(self):
+        """Test converting arrow symbols."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "Go → forward"
+        result = processor.process(text, ctx)
+
+        assert "arrow" in result.lower()
+
+    def test_preserve_hyphens_in_words(self):
+        """Test that hyphens in compound words are preserved."""
+        processor = SymbolConverter()
+        ctx = ProcessingContext(footnotes=[])
+
+        text = "This is a well-known fact"
+        result = processor.process(text, ctx)
+
+        # Hyphens in compound words should not be changed
+        assert "well-known" in result or "well known" in result
+
+
 class TestDefaultPipeline:
     """Tests for the default pipeline."""
 
@@ -223,3 +332,4 @@ class TestDefaultPipeline:
         names = pipeline.preprocessors
         assert "page_number_remover" in names
         assert "footnote_handler" in names
+        assert "symbol_converter" in names

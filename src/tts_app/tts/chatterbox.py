@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
@@ -275,6 +276,8 @@ class ChatterboxEngine(TTSEngine):
         sample_rate = self._model.sr
         was_cancelled = False
         chunks_completed = 0
+        chunk_times = []  # Track time for each chunk to estimate remaining time
+        start_time = time.time()
 
         for i, chunk in enumerate(chunks):
             # Check for cancellation before processing each chunk
@@ -283,8 +286,17 @@ class ChatterboxEngine(TTSEngine):
                 was_cancelled = True
                 break
 
+            # Calculate estimated remaining time based on average chunk time
+            estimated_remaining = None
+            if chunk_times:
+                avg_chunk_time = sum(chunk_times) / len(chunk_times)
+                remaining_chunks = total_chunks - i
+                estimated_remaining = avg_chunk_time * remaining_chunks
+
             if progress_callback:
-                progress_callback(i + 1, total_chunks, f"Processing chunk {i + 1}/{total_chunks}")
+                progress_callback(i + 1, total_chunks, f"Processing chunk {i + 1}/{total_chunks}", estimated_remaining)
+
+            chunk_start_time = time.time()
 
             if not chunk.strip():
                 continue
@@ -294,6 +306,11 @@ class ChatterboxEngine(TTSEngine):
                 wav = self._generate_chunk(chunk)
                 audio_segments.append(wav)
                 chunks_completed += 1
+
+                # Track chunk processing time for estimation
+                chunk_time = time.time() - chunk_start_time
+                chunk_times.append(chunk_time)
+                logger.debug(f"Chunk {i + 1} took {chunk_time:.1f}s")
 
             except Exception as e:
                 logger.warning(f"Failed to synthesize chunk {i + 1}: {e}")
@@ -330,9 +347,9 @@ class ChatterboxEngine(TTSEngine):
 
         if progress_callback:
             if was_cancelled:
-                progress_callback(chunks_completed, total_chunks, f"Cancelled - saved {chunks_completed}/{total_chunks} chunks")
+                progress_callback(chunks_completed, total_chunks, f"Cancelled - saved {chunks_completed}/{total_chunks} chunks", None)
             else:
-                progress_callback(total_chunks, total_chunks, "Complete")
+                progress_callback(total_chunks, total_chunks, "Complete", None)
 
         return TTSResult(
             audio_path=output_path,
